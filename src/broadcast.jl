@@ -16,8 +16,24 @@ end
 cufunc(f) = f
 cufunc(::Type{T}) where T = (x...) -> T(x...) # broadcasting type ctors isn't GPU compatible
 
-Broadcast.broadcasted(::ArrayStyle{CuArray}, f, args...) =
+is_CuArray_subtype(args...) = all(a->typeof(a)<:CuArray, args...)
+
+compatible_types(args...) = is_CuArray_subtype(parent.(args))
+function compatible_types(a::Broadcasted{<:ArrayStyle{CuArray},A,F,T}, args...) where {A,F,T}
+    is_CuArray_subtype(parent.(args))
+end
+compatible_types(a::Broadcasted{S,A,F,T}, args...) where {S,A,F,T} = false
+# cases that should fail quickly without calling is_CuArray_subtype
+compatible_types(a::Array, args...) = false
+compatible_types(a1::CuArray, a2::Array) = false
+
+function Broadcast.broadcasted(::ArrayStyle{CuArray}, f, args...)
+  if !(compatible_types(args...))
+    error("Cannot broadcast a CuArray with a non-CuArray. If you believe you have recieved this error
+ by mistake please make sure typeof(Base.parent(YourCuArrayWrapper)) <: CuArray is true.")
+  end
   Broadcasted{ArrayStyle{CuArray}}(cufunc(f), args, nothing)
+end
 
 libdevice = :[
   cos, cospi, sin, sinpi, tan, acos, asin, atan,
